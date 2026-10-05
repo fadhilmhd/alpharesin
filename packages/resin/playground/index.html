@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="referrer" content="no-referrer" />
+<title>AlphaResin Playground</title>
+<meta name="description" content="Convert Pine-compatible scripts (v5 and v6) in your browser: see what converts and what is left out, read the module, and run it on sample bars or your own." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%230f7a5f%22 d=%22M12 2.5c-3.6 4.6-6 8.2-6 11.2a6 6 0 0 0 12 0c0-3-2.4-6.6-6-11.2Z%22/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c-3.6 4.6-6 8.2-6 11.2a6 6 0 0 0 12 0c0-3-2.4-6.6-6-11.2Z" /></svg>
+    <div>
+      <h1>AlphaResin <span>Playground</span></h1>
+      <p>Pine in. Many forms out.</p>
+    </div>
+  </div>
+  <nav aria-label="Project">
+    <a href="https://github.com/fadhilmhd/alpharesin" rel="noopener">GitHub</a>
+    <a href="https://www.npmjs.com/package/alpharesin" rel="noopener">npm</a>
+  </nav>
+</header>
+
+<main class="grid">
+  <section class="panel" aria-labelledby="src-h">
+    <div class="panel-head">
+      <h2 id="src-h">Your script</h2>
+      <label class="inline">Start from <select id="sample"></select></label>
+    </div>
+    <textarea id="source" class="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Pine-compatible script, version 5 or 6" aria-describedby="editor-help"></textarea>
+    <p id="editor-help" class="hint">Tab indents. Press Esc, then Tab, to move on.</p>
+    <details class="libs">
+      <summary>Libraries it imports (<span id="lib-count">0</span>)</summary>
+      <p class="hint">Paste each library's source. Its <code>library("Name")</code> answers <code>import user/Name/1</code>.</p>
+      <div id="lib-list"></div>
+      <button type="button" id="add-lib" class="secondary">Add a library</button>
+    </details>
+    <div class="cli">
+      <h3>From the command line</h3>
+      <pre><code>npx alpharesin check script.pine
+npx alpharesin convert script.pine -o script.js
+npx alpharesin run script.pine --bars bars.csv</code></pre>
+    </div>
+    <p class="privacy">Converted and run in your browser. Nothing you paste or open is sent anywhere.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="res-h">
+    <div class="panel-head">
+      <h2 id="res-h">Result</h2>
+      <span id="status" class="pill busy" role="status" aria-live="polite">Reading…</span>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Result">
+      <button type="button" role="tab" id="t-notes" aria-controls="tab-notes" aria-selected="true">Notes</button>
+      <button type="button" role="tab" id="t-code" aria-controls="tab-code" aria-selected="false" tabindex="-1">Module</button>
+      <button type="button" role="tab" id="t-run" aria-controls="tab-run" aria-selected="false" tabindex="-1">Run</button>
+    </div>
+
+    <div id="tab-notes" role="tabpanel" aria-labelledby="t-notes" class="tabpanel">
+      <div id="notes"></div>
+    </div>
+
+    <div id="tab-code" role="tabpanel" aria-labelledby="t-code" class="tabpanel" hidden>
+      <div class="row">
+        <button type="button" id="copy" class="secondary">Copy</button>
+        <button type="button" id="download" class="secondary">Download .js</button>
+      </div>
+      <p class="hint">An ES module for the AlphaPine indicator SDK. It runs on the Pine runtime in <code>alpharesin</code>.</p>
+      <pre class="code"><code id="code"></code></pre>
+    </div>
+
+    <div id="tab-run" role="tabpanel" aria-labelledby="t-run" class="tabpanel" hidden>
+      <div class="run-controls">
+        <label class="field">
+          <span>Bars</span>
+          <select id="bars-choice">
+            <option value="sample">Sample bars (synthetic, hourly)</option>
+            <option value="file">Open a CSV file…</option>
+          </select>
+        </label>
+        <input id="bars-file" type="file" accept=".csv,text/csv,text/plain" hidden />
+        <div id="inputs" class="inputs"></div>
+        <div class="row">
+          <button type="button" id="run" class="primary">Run</button>
+          <button type="button" id="download-csv" class="secondary" disabled>Download values (.csv)</button>
+        </div>
+        <p class="hint">A CSV needs time, open, high, low and close columns (volume is optional); times in UTC.</p>
+      </div>
+      <p id="run-status" class="run-status" aria-live="polite"></p>
+      <div id="chart" class="chart"></div>
+      <div id="strategy"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Pine Script® is a trademark of TradingView, Inc. AlphaResin is an independent project, not affiliated with or endorsed by TradingView.</p>
+  <p>Apache License 2.0 · Sample bars are synthetic, not market data. Nothing here is financial advice.</p>
+</footer>
+</body>
+</html>

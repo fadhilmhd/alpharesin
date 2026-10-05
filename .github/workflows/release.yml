@@ -1,0 +1,28 @@
+# Publish `alpharesin` to npm when a version tag (v0.2.0) is pushed. It uses npm's
+# trusted publishing: no token is stored here. Set it up once on npmjs.com →
+# alpharesin → Settings → Trusted publishing: GitHub Actions, this repository,
+# workflow release.yml. The very first version is published by hand (RELEASING.md).
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -- npm
+      - name: The tag matches the package version
+        run: test "v$(node -p "require('./packages/resin/dist/npm/package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm publish ./packages/resin/dist/npm --access public --provenance

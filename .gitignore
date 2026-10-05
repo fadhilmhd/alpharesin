@@ -1,3 +1,4 @@
 node_modules/
+dist/
 packages/resin/conformance/exports/*.csv
 .DS_Store

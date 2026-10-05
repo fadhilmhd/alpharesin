@@ -56,6 +56,11 @@ export interface Converted {
 export interface ConvertOptions {
   /** Library sources the script's imports may read (packages/resin link.ts). */
   libraries?: LibrarySource[];
+  /**
+   * How notes name the place the module runs ("the Terminal" by default, for
+   * the AlphaPine Terminal): "Footprint data the host doesn't carry".
+   */
+  host?: string;
 }
 
 class Unsupported extends Error {
@@ -308,7 +313,7 @@ export function convert(source: string, options: ConvertOptions = {}): Converted
     overlay: g.overlay,
     version: script.version,
     errors,
-    warnings,
+    warnings: options.host ? warnings.map((w) => ({ ...w, message: w.message.replace(/\bthe Terminal\b/g, options.host!) })) : warnings,
     library,
     libraryName: libraryTitle(script),
     missingLibraries: linked.missing.map((m) => m.path),

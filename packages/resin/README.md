@@ -28,15 +28,49 @@ research, a backtest in another engine, or a language nobody has asked for yet.
 
 "Alpha" comes from AlphaPine, where AlphaResin began: the resin of the AlphaPine.
 
-## What it does
+## Use it
+
+**In the browser:** the [playground](https://fadhilmhd.github.io/alpharesin/).
+Paste a script and see what converts, what is left out and why, and the module
+it becomes. Run it on sample bars or your own CSV. Nothing leaves the page.
+
+**On the command line** (Node 18 or newer, nothing else to install):
+
+```sh
+npx alpharesin check script.pine                    # what converts, what is left out, by line
+npx alpharesin convert script.pine -o script.js     # the module
+npx alpharesin run script.pine --bars bars.csv      # every plot, bar by bar, as CSV
+npx alpharesin parity script.pine --tv export.csv   # against a TradingView chart export
+```
+
+- `--lib Library.pine` supplies a library the script imports; repeat it for each one.
+- `--input "Length=20"` sets an input by its name or label.
+- `--json` gives machine-readable output.
+- A bars file needs `time, open, high, low, close` and optionally `volume`, in UTC.
+- `alpharesin --help` lists everything.
+
+For regular use, install it: `npm install -g alpharesin`.
+
+**From code:**
+
+```sh
+npm install alpharesin
+```
 
 ```ts
-import { convert } from "@alphapine/resin";
+import { convert, loadModule, parseBars, runScript } from "alpharesin";
 
 const { ok, code, errors, warnings } = convert(pineSource, { libraries });
 // ok: it converted. code: an SDK module (JavaScript) to run.
 // errors: what stopped it, each with its line. warnings: what it left out, and why.
+
+const mod = await loadModule(code);
+const { columns, strategy } = runScript(mod, parseBars(csvText).bars);
+// columns: each plot by title, one value per bar. strategy: its results, for a strategy.
 ```
+
+The package carries the converter, the Pine runtime that converted modules run
+on (`pine`, `ta`), the SDK's types, and the `alpharesin` command.
 
 - **It reads the whole language.** The lexer and parser cover the v5 and v6
   grammar:

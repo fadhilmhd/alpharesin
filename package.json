@@ -10,10 +10,15 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p packages/sdk && tsc -p packages/engine && tsc -p packages/resin"
+    "typecheck": "tsc -p packages/sdk && tsc -p packages/engine && tsc -p packages/resin && tsc -p packages/resin/playground",
+    "build": "node packages/resin/scripts/build.mjs",
+    "playground": "node packages/resin/scripts/serve-playground.mjs",
+    "check:playground": "node packages/resin/scripts/check-playground.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.20.4",
+    "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }
