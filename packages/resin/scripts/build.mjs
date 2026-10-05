@@ -95,7 +95,7 @@ function buildNpm() {
         main: "./index.js",
         types: "./types/resin/npm/index.d.ts",
         exports: { ".": { types: "./types/resin/npm/index.d.ts", default: "./index.js" }, "./package.json": "./package.json" },
-        bin: { alpharesin: "./cli.js" },
+        bin: { alpharesin: "cli.js" },
         files: ["index.js", "cli.js", "types", "README.md", "LICENSE", "NOTICE"],
         engines: { node: ">=18" },
         sideEffects: false,
