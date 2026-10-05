@@ -1,0 +1,26 @@
+//@version=6
+// AlphaResin conformance 3: the broker. Entries on EMA crosses, an ATR bracket on
+// longs and a trailing stop on shorts; the plots read the strategy's own state.
+strategy("AlphaResin Conformance 3 | AlphaPine", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 50, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+fast = ta.ema(close, 9)
+slow = ta.ema(close, 21)
+if ta.crossover(fast, slow)
+    strategy.entry("Long", strategy.long)
+if ta.crossunder(fast, slow)
+    strategy.entry("Short", strategy.short)
+atr = ta.atr(14)
+if strategy.position_size > 0
+    strategy.exit("Long exit", "Long", stop = strategy.position_avg_price - 2 * atr, limit = strategy.position_avg_price + 3 * atr)
+if strategy.position_size < 0
+    strategy.exit("Short exit", "Short", trail_points = atr / syminfo.mintick, trail_offset = atr / syminfo.mintick / 2)
+
+plot(strategy.position_size, "position")
+plot(strategy.position_avg_price, "avg price")
+plot(strategy.netprofit, "netprofit")
+plot(strategy.equity, "equity")
+plot(strategy.openprofit, "openprofit")
+plot(strategy.closedtrades, "closed trades")
+plot(strategy.wintrades, "wins")
+plot(strategy.losstrades, "losses")
+plot(strategy.max_drawdown, "max drawdown")
