@@ -111,6 +111,78 @@ A module that runs on @alphapine/engine's Pine runtime
 The syntax tree is where every target starts. A target for another language
 walks the same tree. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to add one.
 
+## Why the output is JavaScript
+
+Pine is a good language for an indicator on TradingView's chart. It was made
+for that chart, and away from it, it has limits:
+
+- **It runs in one place.** Pine's compiler and runtime are TradingView's, and
+  scripts run on TradingView's servers. A script can't run in your own app, in
+  a test, in a backtest engine you choose, or offline.
+- **Its output describes a chart.** `plot`, `label` and `table` say what to
+  draw on TradingView's chart. A host that wants to measure a signal, alert on
+  an event or explain a reading has to guess what the drawing meant.
+- **It is a closed box.** There are no packages, files or unit tests. Loops,
+  drawings and requests have limits, and data comes only from TradingView.
+
+AlphaResin keeps Pine as the input, so existing scripts and what people know
+about Pine still count. The output is a plain JavaScript ES module, written
+against a small typed contract, the AlphaPine SDK:
+
+```js
+export default {
+  name: "RSI",
+  inputs: { length: { type: "int", default: 14 } },
+  run({ close, inputs }, { ta }) {
+    return { lines: [{ title: "RSI", values: ta.rsi(close, inputs.length) }] };
+  },
+};
+```
+
+What that gives:
+
+- **It runs wherever JavaScript runs.** Browsers, Node and other runtimes need
+  nothing installed, and the engine underneath compiles the module rather than
+  interpreting it.
+- **It is a whole language.** You get objects, classes, maps, recursion, any
+  algorithm, and npm. A converted script can be opened and extended by hand.
+- **The output is data, not drawing.** Lines, markers, zones, events, tables
+  and a bias come back as values, and each host decides how to show them.
+  Events can be counted, measured and backtested.
+- **It can be tested.** Run a module on a CSV in CI, unit-test it with any test
+  runner, or compare it with a TradingView export using `alpharesin parity`.
+- **Tools already know it.** Editors, type checkers and AI assistants all read
+  JavaScript and TypeScript, and `@alphapine/sdk` carries the types.
+- **Pine's behaviour lives in the runtime, not the language.** Series history,
+  each `ta.*` call's own state, `na` and `request.security` are handled by
+  `@alphapine/engine`. So the module stays plain JavaScript and still matches
+  TradingView, as the parity tools check.
+
+### Other routes to the same place
+
+Two other approaches are reasonable too:
+
+- **Run Pine's syntax as it is**, with an interpreter or transpiler written in
+  JavaScript. It feels familiar, but the script stays inside Pine's model: its
+  output still describes a chart, and extending it means writing more Pine.
+- **Design a new Pine-like language.** It can lift Pine's limits, but everyone
+  has to learn it, and its editors, documentation and tools start from nothing.
+
+AlphaResin takes a third route: Pine goes in and a language that already exists
+comes out. Nobody has to learn anything new to start, and nothing stops them
+from going further.
+
+### What it costs
+
+- For the simplest indicators, a hand-written module is longer than Pine. The
+  calls read the same (`ta.ema(close, 9)`), but the module's frame (name,
+  inputs, return) is spelled out.
+- Converted code reads like generated code. Edit the Pine and convert it again,
+  or rewrite the parts you care about.
+- JavaScript isn't sandboxed by itself. A host must isolate the code it runs,
+  for example in a worker with no network and a time limit, as the AlphaPine
+  Terminal does.
+
 ## What converts today
 
 - **Built-ins:**
