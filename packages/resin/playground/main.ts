@@ -236,6 +236,21 @@ async function update() {
 
 // ---------------- inputs ----------------
 
+/** What a timeframe input offers, as Pine writes each one; "" is the bars' own. */
+const TIMEFRAMES: readonly (readonly [string, string])[] = [
+  ["", "The bars' own"],
+  ["1", "1 minute"],
+  ["5", "5 minutes"],
+  ["15", "15 minutes"],
+  ["30", "30 minutes"],
+  ["60", "1 hour"],
+  ["120", "2 hours"],
+  ["240", "4 hours"],
+  ["D", "1 day"],
+  ["W", "1 week"],
+  ["M", "1 month"],
+];
+
 function renderInputs(specs: Record<string, InputSpec>, defaults: Record<string, InputValue>) {
   const fields = Object.entries(specs).map(([key, spec]) => {
     const wrap = document.createElement("label");
@@ -251,6 +266,11 @@ function renderInputs(specs: Record<string, InputSpec>, defaults: Record<string,
     } else if (spec.options?.length) {
       control = document.createElement("select");
       for (const o of spec.options) control.add(new Option(o, o, false, String(defaults[key]) === o));
+    } else if (spec.type === "text" && spec.timeframe) {
+      // A timeframe input: the common ones, and the script's own default if it isn't one of them.
+      control = document.createElement("select");
+      const choices = TIMEFRAMES.some(([v]) => v === String(defaults[key])) ? TIMEFRAMES : [...TIMEFRAMES, [String(defaults[key]), String(defaults[key])] as const];
+      for (const [v, label] of choices) control.add(new Option(label, v, false, String(defaults[key]) === v));
     } else {
       control = document.createElement("input");
       control.type = spec.type === "int" || spec.type === "float" ? "number" : "text";

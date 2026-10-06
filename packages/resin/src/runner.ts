@@ -33,6 +33,8 @@ export interface InputSpec {
   maxLength?: number;
   /** Text inputs: the value names a market. */
   symbol?: boolean;
+  /** Text inputs: the value names a timeframe ("60", "D"; "" is the chart's). */
+  timeframe?: boolean;
 }
 
 export type InputValue = number | boolean | string;
@@ -161,6 +163,7 @@ export function resolveInputs(mod: ResinModule, given: Record<string, string> = 
       v = raw.toLowerCase() === "true";
     } else if (spec.type === "text") {
       v = raw.slice(0, spec.maxLength ?? 200);
+      if (spec.timeframe && v.trim() && !engine.pine.parseTf(v)) throw new RunError(`Input "${name}" needs a timeframe such as 15, 60, 240, D or W (empty for the bars' own), not "${raw}"`);
     } else {
       v = raw;
       if (spec.options && !spec.options.includes(raw)) throw new RunError(`Input "${name}" is one of: ${spec.options.join(", ")}`);

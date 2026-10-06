@@ -555,6 +555,22 @@ plot(g, "Gaps")`);
     });
   });
 
+  it("reads the timeframe an input names, and the chart's own when it's empty", async () => {
+    const c = convert(`//@version=6
+indicator("Input tf")
+tf = input.timeframe("D", "Timeframe")
+plot(request.security(syminfo.tickerid, tf, close[1], lookahead = barmerge.lookahead_on), "Prev")`);
+    expect(c.errors, c.code).toEqual([]);
+    const mod = (await import(`data:text/javascript;base64,${Buffer.from(c.code).toString("base64")}`)) as { default: { run: (ctx: unknown, sdk: unknown) => Out } };
+    const prev = (tf: string) => mod.default.run({ bars: hourly, periodMs: 3_600_000, inputs: { tf } }, { pine: engine.pine, ta: engine.ta }).lines[0]!.values;
+    const daily = prev("D");
+    hourly.forEach((b, i) => {
+      const d = days.indexOf(dayOf(b.time));
+      expect(daily[i], `bar ${i}`).toBe(d > 0 ? dailyClose[d - 1]! : null);
+    });
+    expect(prev("").slice(1)).toEqual(hourly.slice(0, -1).map((b) => b.close));
+  });
+
   it("warms up on older daily bars when the host supplies them, and says which timeframes it asked for", async () => {
     const c = convert(`//@version=6
 indicator("D sma")
@@ -637,17 +653,20 @@ greeting = input.string("hello", "Greeting")
 market = input.symbol("BINANCE:ETHUSDT", "Market")
 notes = input.text_area("one\\ntwo", "Notes")
 tf = input.timeframe("D", "Timeframe")
+own = input.timeframe(timeframe.period, "Own")
 plot(str.length(greeting), "Greeting length")
 plot(str.length(market), "Market length")`;
 
-  it("become adjustable text inputs; a symbol says it names a market; timeframes stay fixed for now", async () => {
+  it("become adjustable text inputs; a symbol says it names a market, a timeframe a timeframe", async () => {
     const { def, converted } = await run(src);
     expect(def.inputs).toEqual({
       greeting: { label: "Greeting", type: "text", default: "hello", maxLength: 200 },
       market: { label: "Market", type: "text", default: "BINANCE:ETHUSDT", maxLength: 200, symbol: true },
       notes: { label: "Notes", type: "text", default: "one\ntwo", maxLength: 2000 },
+      tf: { label: "Timeframe", type: "text", default: "D", maxLength: 10, timeframe: true },
+      own: { label: "Own", type: "text", default: "", maxLength: 10, timeframe: true },
     });
-    expect(converted.warnings.map((w) => w.message)).toEqual(['The timeframe input "Timeframe" isn\'t adjustable yet; it keeps its default']);
+    expect(converted.warnings).toEqual([]);
   });
 
   it("reads the value it is given", async () => {

@@ -145,6 +145,14 @@ describe("alpharesin command line", () => {
     expect(unknown.err()).toContain('"nope" isn\'t one of this script\'s inputs');
   });
 
+  it("takes a timeframe input as Pine writes it, and refuses one that isn't", async () => {
+    const src = `//@version=6\nindicator("Tf")\ntf = input.timeframe("D", "Timeframe")\nplot(request.security(syminfo.tickerid, tf, close), "Close")\n`;
+    expect(await main(["run", "t.pine", "--bars", "b.csv", "-i", "Timeframe=240"], setup({ "t.pine": src, "b.csv": barsCsv() }).io)).toBe(0);
+    const bad = setup({ "t.pine": src, "b.csv": barsCsv() });
+    expect(await main(["run", "t.pine", "--bars", "b.csv", "-i", "Timeframe=4 hours"], bad.io)).toBe(1);
+    expect(bad.err()).toContain("needs a timeframe");
+  });
+
   it("runs a strategy and sums up its results", async () => {
     const t = setup({ "s.pine": STRATEGY, "b.csv": barsCsv(600) });
     expect(await main(["run", "s.pine", "--bars", "b.csv"], t.io)).toBe(0);

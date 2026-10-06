@@ -40,8 +40,12 @@ export type UserInput =
   | { type: "int" | "float"; default: number; min?: number; max?: number; step?: number; label?: string }
   | { type: "bool"; default: boolean; label?: string }
   | { type: "select"; default: string; options: string[]; label?: string }
-  /** Free text. `symbol`: it names a market (e.g. "BINANCE:ETHUSDT"), so a host may offer its own markets. */
-  | { type: "text"; default: string; label?: string; maxLength?: number; symbol?: boolean };
+  /**
+   * Free text. `symbol`: it names a market (e.g. "BINANCE:ETHUSDT"), so a host may offer its own markets.
+   * `timeframe`: it names a timeframe as Pine writes it ("60", "240", "D", "W"; "" is the chart's), so a
+   * host may offer its own timeframes.
+   */
+  | { type: "text"; default: string; label?: string; maxLength?: number; symbol?: boolean; timeframe?: boolean };
 
 /** What `run` receives: the bars, as rows and as columns, and the inputs' values. */
 export interface RunContext {

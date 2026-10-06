@@ -1368,8 +1368,11 @@ class Generator {
     else if (type === "string" || type === "timeframe" || type === "symbol" || type === "text_area") {
       if (Array.isArray(options)) Object.assign(spec, { type: "select", default: String(def), options: options.map(String) });
       else if (type === "timeframe") {
-        this.warn(e, `The timeframe input "${label}" isn't adjustable yet; it keeps its default`);
-        return q(String(def ?? ""));
+        // A timeframe as Pine writes it ("60", "D"); timeframe.period, or "", is the chart's own.
+        const d = def && typeof def === "object" && "member" in def ? ((def as { member: string }).member === "timeframe.period" ? "" : undefined) : def;
+        if (typeof d !== "string") return this.unsupported(e, "input.timeframe needs a timeframe string as its default");
+        Object.assign(spec, { type: "text", default: d, maxLength: 10, timeframe: true });
+        code = `String(${code})`;
       } else {
         // Free text: a symbol is a market name, so a host can offer its own markets beside it.
         Object.assign(spec, { type: "text", default: String(def ?? ""), maxLength: type === "text_area" ? 2000 : 200, ...(type === "symbol" ? { symbol: true } : {}) });

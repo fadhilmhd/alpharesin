@@ -191,7 +191,8 @@ from going further.
   - `timeframe.*`, `syminfo.*`, `chart.point`;
   - time and date functions.
 - **Data:**
-  - `request.security` on the same market, on higher and lower timeframes;
+  - `request.security` on the same market, on higher and lower timeframes,
+    including one the user picks through `input.timeframe`;
   - `request.security` on other markets the host supplies;
   - `request.security` on Heikin Ashi bars;
   - `request.security_lower_tf`.
