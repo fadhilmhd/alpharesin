@@ -84,6 +84,7 @@ describe("alpharesin command line", () => {
     expect(a).toMatchObject({ command: "run", file: "s.pine", bars: "b.csv", inputs: { "Fast length": "12", x: "1" }, libs: ["a.pine", "b.pine"], json: true });
     expect(() => parseArgs(["run", "--bars"])).toThrow(/needs a value/);
     expect(() => parseArgs(["check", "a", "--nope"])).toThrow(/Unknown option/);
+    expect(parseArgs(["run", "s.pine", "-i", "Strike (0 = auto)=82000"]).inputs).toEqual({ "Strike (0 = auto)": "82000" });
   });
 
   it("answers help, version and bad usage with the right exit status", async () => {

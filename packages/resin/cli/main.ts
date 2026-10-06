@@ -92,7 +92,8 @@ export function parseArgs(argv: readonly string[]): Args {
       case "-i":
       case "--input": {
         const v = value();
-        const eq = v.indexOf("=");
+        // The last "=": labels may hold one ("Strike (0 = auto)"), values rarely do.
+        const eq = v.lastIndexOf("=");
         if (eq < 1) throw new UsageError(`--input takes name=value, not "${v}"`);
         a.inputs[v.slice(0, eq).trim()] = v.slice(eq + 1).trim();
         break;

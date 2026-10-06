@@ -1336,7 +1336,7 @@ class Generator {
       this.warn(e, "Colour inputs aren't adjustable; they keep their default");
       return a[0] ? this.expr(a[0], ctx) : "NaN";
     }
-    if (["input.time", "input.session", "input.symbol", "input.text_area"].includes(kind)) {
+    if (["input.time", "input.session"].includes(kind)) {
       // Kept at their default for now: the value the script was written with.
       const title = this.fold(a[1] ?? null);
       this.warn(e, `The ${kind.slice(6).replace("_", " ")} input "${typeof title === "string" && title ? title : key}" isn't adjustable yet; it keeps its default`);
@@ -1365,11 +1365,15 @@ class Generator {
         Object.assign(spec, { type, default: def, ...(typeof min === "number" ? { min } : {}), ...(typeof max === "number" ? { max } : {}), ...(typeof step === "number" ? { step } : {}) });
       }
     } else if (type === "bool") Object.assign(spec, { type: "bool", default: def });
-    else if (type === "string" || type === "timeframe") {
+    else if (type === "string" || type === "timeframe" || type === "symbol" || type === "text_area") {
       if (Array.isArray(options)) Object.assign(spec, { type: "select", default: String(def), options: options.map(String) });
-      else {
-        this.warn(e, `The text input "${label}" isn't adjustable yet; it keeps its default`);
+      else if (type === "timeframe") {
+        this.warn(e, `The timeframe input "${label}" isn't adjustable yet; it keeps its default`);
         return q(String(def ?? ""));
+      } else {
+        // Free text: a symbol is a market name, so a host can offer its own markets beside it.
+        Object.assign(spec, { type: "text", default: String(def ?? ""), maxLength: type === "text_area" ? 2000 : 200, ...(type === "symbol" ? { symbol: true } : {}) });
+        code = `String(${code})`;
       }
     } else if (type === "source") {
       const name = def && typeof def === "object" && "source" in def ? String((def as { source: string }).source) : "close";

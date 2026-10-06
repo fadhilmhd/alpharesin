@@ -1,6 +1,6 @@
 {
   "name": "@alphapine/resin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AlphaResin: a parser and converter for Pine-compatible indicator scripts (v5 and v6). Not affiliated with TradingView.",
   "license": "Apache-2.0",
   "private": true,

@@ -29,6 +29,10 @@ export interface InputSpec {
   min?: number;
   max?: number;
   options?: string[];
+  /** Text inputs: the longest value taken. */
+  maxLength?: number;
+  /** Text inputs: the value names a market. */
+  symbol?: boolean;
 }
 
 export type InputValue = number | boolean | string;
@@ -155,6 +159,8 @@ export function resolveInputs(mod: ResinModule, given: Record<string, string> = 
     } else if (spec.type === "bool") {
       if (!/^(true|false)$/i.test(raw)) throw new RunError(`Input "${name}" is true or false, not "${raw}"`);
       v = raw.toLowerCase() === "true";
+    } else if (spec.type === "text") {
+      v = raw.slice(0, spec.maxLength ?? 200);
     } else {
       v = raw;
       if (spec.options && !spec.options.includes(raw)) throw new RunError(`Input "${name}" is one of: ${spec.options.join(", ")}`);

@@ -629,3 +629,31 @@ plot(own, "Own")`;
     expect(out.lines[1]!.values.filter((v) => v === 1)).toHaveLength(days.length);
   });
 });
+
+describe("text and symbol inputs", () => {
+  const src = `//@version=6
+indicator("Text inputs")
+greeting = input.string("hello", "Greeting")
+market = input.symbol("BINANCE:ETHUSDT", "Market")
+notes = input.text_area("one\\ntwo", "Notes")
+tf = input.timeframe("D", "Timeframe")
+plot(str.length(greeting), "Greeting length")
+plot(str.length(market), "Market length")`;
+
+  it("become adjustable text inputs; a symbol says it names a market; timeframes stay fixed for now", async () => {
+    const { def, converted } = await run(src);
+    expect(def.inputs).toEqual({
+      greeting: { label: "Greeting", type: "text", default: "hello", maxLength: 200 },
+      market: { label: "Market", type: "text", default: "BINANCE:ETHUSDT", maxLength: 200, symbol: true },
+      notes: { label: "Notes", type: "text", default: "one\ntwo", maxLength: 2000 },
+    });
+    expect(converted.warnings.map((w) => w.message)).toEqual(['The timeframe input "Timeframe" isn\'t adjustable yet; it keeps its default']);
+  });
+
+  it("reads the value it is given", async () => {
+    const { out } = await run(src, { greeting: "hi there", market: "ETHUSD" });
+    const lines = (out as unknown as { lines: { title: string; values: (number | null)[] }[] }).lines;
+    expect(lines.find((l) => l.title === "Greeting length")!.values.at(-1)).toBe(8);
+    expect(lines.find((l) => l.title === "Market length")!.values.at(-1)).toBe(6);
+  });
+});
