@@ -132,6 +132,7 @@ against a small typed contract, the AlphaPine SDK:
 ```js
 export default {
   name: "RSI",
+  description: "Relative strength index, 0 to 100.",
   inputs: { length: { type: "int", default: 14 } },
   run({ close, inputs }, { ta }) {
     return { lines: [{ title: "RSI", values: ta.rsi(close, inputs.length) }] };

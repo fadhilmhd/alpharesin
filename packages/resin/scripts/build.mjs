@@ -61,11 +61,21 @@ function buildNpm() {
   const typesDir = join(out, "types");
   const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
   for (const file of walk(typesDir).filter((f) => f.endsWith(".d.ts"))) {
-    const text = readFileSync(file, "utf8").replace(/(["'])@alphapine\/(engine|sdk|resin)\1/g, (_, q, name) => {
-      let rel = relative(dirname(file), join(typesDir, name, "src/index.js")).replace(/\\/g, "/");
-      if (!rel.startsWith(".")) rel = `./${rel}`;
-      return `${q}${rel}${q}`;
-    });
+    const text = readFileSync(file, "utf8")
+      .replace(/(["'])@alphapine\/(engine|sdk|resin)\1/g, (_, q, name) => {
+        let rel = relative(dirname(file), join(typesDir, name, "src/index.js")).replace(/\\/g, "/");
+        if (!rel.startsWith(".")) rel = `./${rel}`;
+        return `${q}${rel}${q}`;
+      })
+      // Relative imports need their extension under `moduleResolution: node16/nodenext`, or a user's
+      // TypeScript can't follow them and the package's types quietly become `any`.
+      .replace(/((?:from|import\()\s*)(["'])(\.{1,2}\/[^"']*?)\2/g, (whole, lead, q, spec) => {
+        if (/\.(js|mjs|cjs)$/.test(spec)) return whole;
+        const target = join(dirname(file), spec);
+        if (existsSync(`${target}.d.ts`)) return `${lead}${q}${spec}.js${q}`;
+        if (existsSync(join(target, "index.d.ts"))) return `${lead}${q}${spec}/index.js${q}`;
+        throw new Error(`${relative(typesDir, file)}: can't resolve ${spec}`);
+      });
     writeFileSync(file, text);
   }
 

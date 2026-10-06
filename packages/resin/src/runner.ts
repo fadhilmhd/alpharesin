@@ -224,7 +224,8 @@ export function runScript(mod: ResinModule, bars: readonly Bar[], opts: RunOptio
     ...(opts.mintick ? { mintick: opts.mintick } : {}),
     ...(opts.symbol ? { symbol: opts.symbol } : {}),
   };
-  const output = mod.default.run(ctx, { pine: engine.pine, ta: engine.ta });
+  // The same SDK object a host hands a module (the Terminal's sandbox runtime does likewise).
+  const output = mod.default.run(ctx, { version: 1, ta: engine.ta, nz: engine.nz, clamp: engine.clamp, na: NaN, pine: engine.pine });
   const run = engine.pine.lastRun();
   return { output, columns: run?.columns() ?? [], strategy: run?.strategyReport() ?? null };
 }

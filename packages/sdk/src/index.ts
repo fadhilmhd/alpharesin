@@ -17,6 +17,8 @@
  * Tables are shown beside the chart, never on it; colours are tones.
  */
 
+import type * as Engine from "@alphapine/engine";
+
 export const SDK_VERSION = 1;
 
 /** How a value reads: rising, falling, neither, a caution, or plain information. */
@@ -99,11 +101,29 @@ export interface SdkOutput {
   strength?: number | null;
 }
 
+/** The second argument of `run`: the SDK's functions, the same in every host. */
+export interface Sdk {
+  /** The SDK version, 1. */
+  version: number;
+  /** Pine's ta.* built-ins over whole series: ta.ema(close, 9) returns one value per bar. */
+  ta: typeof Engine.ta;
+  /** x, or the fallback when x is NaN (Pine's na). */
+  nz: typeof Engine.nz;
+  /** x kept between lo and hi. */
+  clamp: typeof Engine.clamp;
+  /** Pine's na: a missing value. Test with Number.isNaN(x). */
+  na: number;
+  /** The Pine runtime that converted scripts run on. */
+  pine: typeof Engine.pine;
+}
+
 /** An indicator module: its default export. */
 export interface SdkModule {
   name: string;
+  /** What it measures and how to read it, in plain text (up to 1,000 characters). A host shows it beside the indicator. */
+  description?: string;
   /** Drawn on the price chart (true) or in its own pane. */
   overlay?: boolean;
   inputs?: Record<string, UserInput>;
-  run(ctx: RunContext, sdk: unknown): SdkOutput | Promise<SdkOutput>;
+  run(ctx: RunContext, sdk: Sdk): SdkOutput | Promise<SdkOutput>;
 }
