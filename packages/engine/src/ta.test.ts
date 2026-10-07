@@ -40,13 +40,14 @@ describe("linreg (Pine's ta.linreg)", () => {
 });
 
 describe("percentileNearestRank (sliding sorted window)", () => {
-  // The definition it must keep: sort the window's non-NaN values every bar.
+  // The definition it must keep: sort the whole window every bar, NaNs first,
+  // and read rank ceil(pct / 100 · length) (TradingView's behaviour).
   const naive = (src: number[], length: number, pct: number) =>
     src.map((_, i) => {
       if (i < length - 1) return NaN;
-      const v = src.slice(i - length + 1, i + 1).filter((x) => !Number.isNaN(x)).sort((a, b) => a - b);
-      if (v.length === 0) return NaN;
-      return v[Math.min(Math.max(1, Math.ceil((pct / 100) * v.length)), v.length) - 1]!;
+      const w = src.slice(i - length + 1, i + 1);
+      const v = [...w.filter(Number.isNaN), ...w.filter((x) => !Number.isNaN(x)).sort((a, b) => a - b)];
+      return v[Math.min(Math.max(1, Math.ceil((pct / 100) * length)), length) - 1]!;
     });
 
   it("matches sorting every window, with duplicates and NaNs", () => {
@@ -58,7 +59,15 @@ describe("percentileNearestRank (sliding sorted window)", () => {
   });
 
   it("is NaN before `length` bars and over an all-NaN window", () => {
-    expect(percentileNearestRank([NaN, NaN, NaN, 4, 2], 3, 50)).toEqual([NaN, NaN, NaN, 4, 2]);
+    expect(percentileNearestRank([NaN, NaN, NaN, 4, 2], 3, 100)).toEqual([NaN, NaN, NaN, 4, 4]);
+  });
+
+  it("ranks over the whole window with na lowest, as TradingView does while a source warms up", () => {
+    // Rank ceil(0.5 · 3) = 2: [na, na, 4] lands on an na; [na, 4, 2] reads the smaller value.
+    expect(percentileNearestRank([NaN, NaN, NaN, 4, 2], 3, 50)).toEqual([NaN, NaN, NaN, NaN, 2]);
+    // 30th of 100 with 19 na: the 11th smallest real value (TradingView's BandWidth percentile on bar 99).
+    const src = [...new Array(19).fill(NaN), ...Array.from({ length: 81 }, (_, k) => 81 - k)];
+    expect(percentileNearestRank(src, 100, 30)[99]).toBe(11);
   });
 });
 
@@ -93,5 +102,29 @@ describe("common oscillators and bands", () => {
     expect(ta.vwma([1, 2], [1, 3], 2)[1]).toBe(1.75);
     expect(ta.dev([1, 2, 3], 3)[2]).toBeCloseTo(2 / 3, 9);
     expect(ta.cci([1, 2, 3], 3)[2]).toBeCloseTo(100, 9);
+  });
+});
+
+describe("pivothigh / pivotlow ties (TradingView's rule)", () => {
+  // An equal value on the left does not stop a pivot; an equal value on the right does.
+  // As on a TradingView chart export (BTC 4H, 2017-03-07): equal highs three bars apart, 5/5 pivot on the later one only.
+  const highs = [10, 11, 12, 15, 12, 11, 15, 14, 13, 12, 11, 10];
+  it("of two equal highs, the later is the pivot", () => {
+    const ph = ta.pivothigh(highs, 3, 3);
+    expect(ph[3 + 3]).toBeNaN(); // bar 3 (15) has an equal high on its right (bar 6)
+    expect(ph[6 + 3]).toBe(15); // bar 6 (15) has an equal high on its left only
+    expect(ph.filter((x) => !Number.isNaN(x))).toEqual([15]);
+  });
+  it("lows mirror it", () => {
+    const pl = ta.pivotlow(highs.map((x) => -x), 3, 3);
+    expect(pl[3 + 3]).toBeNaN();
+    expect(pl[6 + 3]).toBe(-15);
+  });
+  it("a strictly higher bar on either side still stops a pivot", () => {
+    expect(ta.pivothigh([1, 2, 3, 2, 1, 4, 1], 2, 2)[2 + 2]).toBe(3);
+    expect(ta.pivothigh([1, 4, 3, 2, 1, 0, 1], 2, 2)[2 + 2]).toBeNaN();
+    expect(ta.pivothigh([1, 2, 3, 2, 4, 0, 1], 2, 2)[2 + 2]).toBeNaN();
+    expect(ta.pivothigh([3, 2, 3, 2, 1, 0, 1], 2, 2)[2 + 2]).toBe(3); // equal on the left: still a pivot
+    expect(ta.pivothigh([1, 2, 3, 2, 3, 0, 1], 2, 2)[2 + 2]).toBeNaN(); // equal on the right: not
   });
 });

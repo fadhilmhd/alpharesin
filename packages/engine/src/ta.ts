@@ -221,7 +221,11 @@ export function correlation(a: Series, b: Series, length: number): Series {
 
 /**
  * Nearest-rank percentile of the last `length` values: sort them and take
- * the value at rank ceil(percentage / 100 · n). NaNs in the window are skipped.
+ * the value at rank ceil(percentage / 100 · length). As on TradingView, the
+ * rank counts the whole window and `na`s rank lowest: a window holding k na
+ * reads the value at rank − k among the others, and na when rank ≤ k
+ * (measured on TradingView's export of a 100-bar BandWidth percentile whose
+ * first windows still hold the 19 na bars of a 20-bar Bollinger band).
  * The window is kept sorted as it slides (one insert, one removal per bar)
  * rather than re-sorted on every bar: same values, a fraction of the CPU.
  */
@@ -244,8 +248,9 @@ export function percentileNearestRank(src: Series, length: number, percentage: n
     const gone = i >= length ? src[i - length]! : NaN;
     if (!isNa(gone)) window.splice(lowerBound(gone), 1);
     if (i < length - 1 || window.length === 0) continue;
-    const rank = Math.max(1, Math.ceil((percentage / 100) * window.length));
-    out[i] = window[Math.min(rank, window.length) - 1]!;
+    const rank = Math.min(Math.max(1, Math.ceil((percentage / 100) * length)), length);
+    const k = rank - 1 - (length - window.length); // the na values sort first
+    if (k >= 0) out[i] = window[k]!;
   }
   return out;
 }
@@ -309,18 +314,28 @@ export function valuewhen(cond: boolean[], src: Series, occurrence: number): Ser
 }
 
 /**
- * Pivot high confirmed `right` bars after it: the value at i − right is
- * higher than the `left` bars before it and the `right` bars after it. The
- * result sits on the confirmation bar i, exactly where Pine reports it.
+ * Pivot high confirmed `right` bars after it: the value at i − right is at
+ * least as high as each of the `left` bars before it and higher than each of
+ * the `right` bars after it. The result sits on the confirmation bar i,
+ * exactly where Pine reports it.
+ *
+ * Ties, as TradingView resolves them: an equal value on the left does not
+ * stop a pivot, an equal value on the right does, so of two equal highs the
+ * later one is the pivot. Measured on a TradingView chart export (BTC 4H,
+ * about 21,000 bars): 3/3, 5/5 and 25/25 pivots with an equal bar only on the
+ * left count (46 cases), those with an equal bar on the right do not (40
+ * cases); rejecting both ties, as this function did before, missed some.
  */
 export function pivothigh(src: Series, left: number, right: number): Series {
-  return pivot(src, left, right, (candidate, other) => other >= candidate);
+  return pivot(src, left, right, (candidate, other) => other > candidate);
 }
 
+/** Pivot low: the mirror of `pivothigh`, with the same ties rule (a low equal on the left still counts). */
 export function pivotlow(src: Series, left: number, right: number): Series {
-  return pivot(src, left, right, (candidate, other) => other <= candidate);
+  return pivot(src, left, right, (candidate, other) => other < candidate);
 }
 
+/** `beaten` decides the left bars; on the right an equal value also beats the candidate. */
 function pivot(src: Series, left: number, right: number, beaten: (candidate: number, other: number) => boolean): Series {
   return src.map((_, i) => {
     const p = i - right;
@@ -330,7 +345,7 @@ function pivot(src: Series, left: number, right: number, beaten: (candidate: num
     for (let k = p - left; k <= p + right; k++) {
       if (k === p) continue;
       const other = src[k]!;
-      if (isNa(other) || beaten(candidate, other)) return NaN;
+      if (isNa(other) || beaten(candidate, other) || (k > p && other === candidate)) return NaN;
     }
     return candidate;
   });
