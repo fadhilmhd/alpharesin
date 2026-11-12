@@ -1,6 +1,14 @@
 # AlphaResin
 
+[![CI](https://github.com/fadhilmhd/alpharesin/actions/workflows/ci.yml/badge.svg)](https://github.com/fadhilmhd/alpharesin/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/alpharesin.svg)](https://www.npmjs.com/package/alpharesin)
+[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+
 **Pine in. Many forms out.**
+
+> **Status: early (0.x).** This README describes version 0.1.7. The API, the
+> command's output and what converts can change between versions; each change
+> is listed in [CHANGELOG.md](CHANGELOG.md).
 
 AlphaResin reads Pine-compatible scripts (versions 5 and 6: indicators, strategies
 and libraries) and turns them into other forms. Its first form is a module
@@ -22,8 +30,8 @@ A pine tree makes resin. People have long made many things from it:
 One raw material, shaped into many products.
 
 That is the idea here. A Pine script is the raw material, and AlphaResin is what
-you shape it from. Today it becomes an indicator that runs, is measured and
-is checked against TradingView. Tomorrow it could become Python for
+you shape it from. Today it becomes an indicator that runs, can be measured and
+can be compared with a chart export. Tomorrow it could become Python for
 research, a backtest in another engine, or a language nobody has asked for yet.
 
 "Alpha" comes from AlphaPine, where AlphaResin began: the resin of the AlphaPine.
@@ -34,13 +42,23 @@ research, a backtest in another engine, or a language nobody has asked for yet.
 Paste a script and see what converts, what is left out and why, and the module
 it becomes. Run it on sample bars or your own CSV. Nothing leaves the page.
 
-**On the command line** (Node 18 or newer, nothing else to install):
+**On the command line** (Node 18 or newer, nothing else to install). The
+[`examples/`](examples/) folder holds two short scripts and a file of synthetic
+bars. The commands below run from a folder that has it: a clone of this
+repository, or, after `npm install alpharesin`, a copy of the package's own
+(`cp -R node_modules/alpharesin/examples .`).
 
 ```sh
-npx alpharesin check script.pine                    # what converts, what is left out, by line
-npx alpharesin convert script.pine -o script.js     # the module
-npx alpharesin run script.pine --bars bars.csv      # every plot, bar by bar, as CSV
-npx alpharesin parity script.pine --tv export.csv   # against a TradingView chart export
+npx alpharesin check examples/sma-cross.pine                          # what converts, what is left out, by line
+npx alpharesin convert examples/sma-cross.pine -o sma-cross.js         # the module
+npx alpharesin run examples/rsi.pine --bars examples/bars.csv -o rsi.csv  # every plot, bar by bar, as CSV
+```
+
+To compare a script with a chart you exported yourself (TradingView's
+**Export chart data**, with the script on the chart):
+
+```sh
+npx alpharesin parity <script.pine> --tv <export.csv>
 ```
 
 - `--lib Library.pine` supplies a library the script imports; repeat it for each one.
@@ -51,47 +69,72 @@ npx alpharesin parity script.pine --tv export.csv   # against a TradingView char
 
 For regular use, install it: `npm install -g alpharesin`.
 
-**From code:**
+**From code** (an ES module, Node 18 or newer):
 
 ```sh
 npm install alpharesin
 ```
 
-```ts
+```js
+// example.mjs: run it with `node example.mjs` beside the examples/ folder.
+import { readFileSync } from "node:fs";
 import { convert, loadModule, parseBars, runScript } from "alpharesin";
+
+const pineSource = readFileSync("examples/sma-cross.pine", "utf8");
+const csvText = readFileSync("examples/bars.csv", "utf8");
+// Libraries the script imports, if any: [{ source: readFileSync("MyLibrary.pine", "utf8") }].
+const libraries = [];
 
 const { ok, code, errors, warnings } = convert(pineSource, { libraries });
 // ok: it converted. code: an SDK module (JavaScript) to run.
 // errors: what stopped it, each with its line. warnings: what it left out, and why.
+if (!ok) throw new Error(errors.map((e) => `line ${e.line}: ${e.message}`).join("\n"));
+for (const w of warnings) console.log(`left out, line ${w.line}: ${w.message}`);
 
 const mod = await loadModule(code);
-const { columns, strategy } = runScript(mod, parseBars(csvText).bars);
-// columns: each plot by title, one value per bar. strategy: its results, for a strategy.
+const bars = parseBars(csvText);
+const { columns, strategy } = runScript(mod, bars.bars, { periodMs: bars.periodMs, mintick: bars.tick });
+// columns: one { title, values } per plot, one value per bar (null where the plot is na).
+// strategy: a strategy's results, or null for an indicator.
+for (const { title, values } of columns) console.log(title, values.at(-1));
 ```
 
-The package carries the converter, the Pine runtime that converted modules run
-on (`pine`, `ta`), the SDK's types, and the `alpharesin` command.
+Everything ships in the one package, `alpharesin`: the converter, the Pine
+runtime that converted modules run on (`pine`, `ta`), the SDK's TypeScript
+types, and the `alpharesin` command. The `packages/` folders in this
+repository (`resin`, `engine`, `sdk`) are its parts; they are not published
+on their own.
 
-- **It reads the whole language.** The lexer and parser cover the v5 and v6
-  grammar:
+## What it does
+
+- **It parses Pine v5 and v6.** The lexer and parser handle:
   - Pine's indentation and line wrapping;
   - user functions with overloads, methods, user types, enums;
   - arrays, maps, matrices;
-  - every control-flow form.
-- **It converts what a script means.** The result runs on the SDK's Pine
-  runtime (`@alphapine/engine`), which follows TradingView's documented
-  behaviour:
+  - `if`, `switch`, `for`, `for … in` and `while`, as statements and as
+    expressions.
+
+  Something it can't parse is an error with its line, never a guess.
+- **It converts what a script means.** The result runs on a Pine runtime
+  (`packages/engine`) written from Pine's public documentation:
   - series and their history;
   - each `ta.*` call with its own state;
   - `na` handling;
   - `request.security` across timeframes, with lookahead and gaps;
   - drawings;
   - strategies, through a broker emulator.
-- **It says what it did.** Nothing is silently dropped:
-  - a construct the language doesn't have is an error, with its line;
-  - a part with no place in the host is left out with a note.
-- **It can be checked.** Export the chart from TradingView, and AlphaResin compares
-  its own run with the export, plot by plot, on the export's own bars.
+
+  A converted script can still behave differently from the original. Where the
+  runtime has been compared with TradingView, the results and their scope are
+  in [conformance/RESULTS.md](https://github.com/fadhilmhd/alpharesin/blob/main/packages/resin/conformance/RESULTS.md).
+- **It says what it did.**
+  - A construct it doesn't support is an error, with its line.
+  - A part with no place in the host is left out with a note and its line.
+  - Some presentation-only arguments (such as text sizes) are accepted and
+    ignored without a note; they change how something looks, not its values.
+- **It can be checked.** Export a chart with the script on it, and
+  `alpharesin parity` compares its own run with the export, plot by plot, on
+  the export's own bars.
 
 ## How it works
 
@@ -99,17 +142,17 @@ on (`pine`, `ta`), the SDK's types, and the `alpharesin` command.
 Pine source
    │  lexer        tokens, Pine's blocks and line wrapping
    ▼
-   │  parser       a syntax tree for the whole v5/v6 grammar (src/ast.ts)
+   │  parser       a syntax tree for the v5/v6 grammar (src/ast.ts)
    ▼
    │  linker       imported libraries joined in (src/link.ts)
    ▼
    │  target       today: an AlphaPine SDK module (src/convert.ts)
    ▼
-A module that runs on @alphapine/engine's Pine runtime
+A module that runs on the Pine runtime (packages/engine)
 ```
 
 The syntax tree is where every target starts. A target for another language
-walks the same tree. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to add one.
+walks the same tree. [CONTRIBUTING.md](https://github.com/fadhilmhd/alpharesin/blob/main/CONTRIBUTING.md) explains how to add one.
 
 ## Why the output is JavaScript
 
@@ -122,8 +165,8 @@ for that chart, and away from it, it has limits:
 - **Its output describes a chart.** `plot`, `label` and `table` say what to
   draw on TradingView's chart. A host that wants to measure a signal, alert on
   an event or explain a reading has to guess what the drawing meant.
-- **It is a closed box.** There are no packages, files or unit tests. Loops,
-  drawings and requests have limits, and data comes only from TradingView.
+- **It is a closed box.** A script can't read files or run unit tests, loops,
+  drawings and requests have limits, and its data comes from TradingView.
 
 AlphaResin keeps Pine as the input, so existing scripts and what people know
 about Pine still count. The output is a plain JavaScript ES module, written
@@ -143,21 +186,21 @@ export default {
 What that gives:
 
 - **It runs wherever JavaScript runs.** Browsers, Node and other runtimes need
-  nothing installed, and the engine underneath compiles the module rather than
-  interpreting it.
+  nothing installed.
 - **It is a whole language.** You get objects, classes, maps, recursion, any
   algorithm, and npm. A converted script can be opened and extended by hand.
 - **The output is data, not drawing.** Lines, markers, zones, events, tables
   and a bias come back as values, and each host decides how to show them.
   Events can be counted, measured and backtested.
-- **It can be tested.** Run a module on a CSV in CI, unit-test it with any test
-  runner, or compare it with a TradingView export using `alpharesin parity`.
+- **It can be tested.** Run a converted script on a CSV (`alpharesin run`),
+  compare it with a chart export (`alpharesin parity`), or unit-test any
+  module, hand-written or converted, with a test runner. (`run` and `parity`
+  take the Pine script and convert it themselves.)
 - **Tools already know it.** Editors, type checkers and AI assistants all read
-  JavaScript and TypeScript, and `@alphapine/sdk` carries the types.
+  JavaScript and TypeScript, and the package carries the SDK's types.
 - **Pine's behaviour lives in the runtime, not the language.** Series history,
-  each `ta.*` call's own state, `na` and `request.security` are handled by
-  `@alphapine/engine`. So the module stays plain JavaScript and still matches
-  TradingView, as the parity tools check.
+  each `ta.*` call's own state, `na` and `request.security` are handled by the
+  runtime, so the module stays plain JavaScript.
 
 ### Other routes to the same place
 
@@ -202,8 +245,8 @@ from going further.
   - targets, stops and trailing stops along each bar;
   - reversals, pyramiding, sizing and commission.
 
-  Entries become events, and the strategy's own results come out as
-  TradingView's Strategy Tester lists them.
+  Entries become events, and the strategy's own results come out in the
+  figures a strategy report lists (trades, net profit, profit factor and more).
 - **Libraries:** `import user/Name/N` reads a library from the sources given to
   `convert`. A library script also converts on its own.
 - **Output:**
@@ -214,11 +257,11 @@ from going further.
   - labels, lines, boxes, polylines and line fills;
   - tables.
 
-Measured on 3,003 public scripts:
-- **86%** of indicators convert, and **98%** of those that are AlphaResin's to
-  convert. The rest import libraries that weren't supplied, use data no host
-  carries, or aren't valid Pine.
-- **nearly 90%** of strategies convert.
+An internal measurement, not reproducible from this repository (October 2026,
+on 3,003 publicly shared scripts that are their authors' work and are not
+redistributed here): about 86% of the indicators converted, and about 90% of
+the strategies. Most of the rest imported libraries that weren't supplied,
+used data no host carries, or weren't valid Pine.
 
 ## The host decides what fits
 
@@ -235,31 +278,58 @@ note. In the AlphaPine Terminal:
 | Renko, Kagi and other chart types | The market's regular bars |
 | Text sizes, frames and other presentation | Left out |
 
-## Checking against TradingView
+## Checking against a chart export
 
 - `packages/resin/src/parity.ts` reads a TradingView **Export chart data** file and compares
   every plotted column with AlphaResin's run of the same script. Each column is
   reported as one of:
   - `match`;
   - `warmup` (agrees once there's enough history);
-  - `converging` (still settling at the end);
-  - `differs`, with the first bar where it does.
-- `packages/resin/conformance/` holds scripts that plot the built-ins, so the whole language
-  can be checked from a few exports ([conformance/README.md](packages/resin/conformance/README.md)).
+  - `converging` (off on nearly every bar, by less and less toward the end:
+    still settling);
+  - `differs`, with the first bar where it does. A few bars that differ among
+    exact ones are `differs`, even when the last bars are exact.
 
-## Packages
+  `maxDiff` in `--json` is the largest relative difference,
+  |a − b| / max(1, |a|, |b|). The text output numbers bars from 1 and gives
+  each one's time; the JSON's `index` and `from` count from 0.
+- `packages/resin/conformance/` holds three scripts that plot many built-ins, so those
+  built-ins can be checked from three exports
+  ([conformance/README.md](https://github.com/fadhilmhd/alpharesin/blob/main/packages/resin/conformance/README.md)).
+- **What has been checked:** on one chart (BTCUSD, 1 hour, 3,266 bars, October
+  2026), 106 compared columns matched once each had the history it needs, and
+  one settled to within 0.002%. The runtime changes in 0.1.7 (`ta.ema` and
+  `ta.rma` step order, the comparison tolerance, pivots beside `na`) were
+  checked on daily and hourly exports of a second chart. Arrays, maps,
+  matrices, strings, drawings, tables, lower timeframes, `request.security`
+  on other markets, and libraries are covered by unit tests only. Details: [conformance/RESULTS.md](https://github.com/fadhilmhd/alpharesin/blob/main/packages/resin/conformance/RESULTS.md).
+- Exported chart data is the data provider's: follow its terms when you use
+  it, and don't publish it.
 
-| Package | What it is |
-|---|---|
-| `@alphapine/resin` | Lexer, parser, linker, the SDK target, parity |
-| `@alphapine/engine` | The Pine runtime and broker that converted scripts run on, and plain `ta` functions on arrays |
-| `@alphapine/sdk` | Types: what a module is, what it receives, what it may return |
+## Build from source
+
+Building and testing need Node 22 or newer (the package itself runs on Node 18
+or newer).
+
+```sh
+git clone https://github.com/fadhilmhd/alpharesin.git
+cd alpharesin
+npm ci
+npm run typecheck && npm test
+npm run build                             # the package (packages/resin/dist/npm) and the playground
+node packages/resin/dist/npm/cli.js check examples/rsi.pine
+npm pack ./packages/resin/dist/npm        # alpharesin-<version>.tgz, as npm would publish it
+```
+
+`npm run build -- npm` or `npm run build -- playground` builds one of the two;
+`npm run playground` serves the playground at http://localhost:4330.
 
 ## Contributing
 
 New targets, built-ins, fixes and test scripts are all welcome. Every
 contribution stays credited to the person who made it. Read
-[CONTRIBUTING.md](CONTRIBUTING.md) first; it's short.
+[CONTRIBUTING.md](https://github.com/fadhilmhd/alpharesin/blob/main/CONTRIBUTING.md) first; it's short. Security issues go by
+email, not as issues: see [SECURITY.md](SECURITY.md).
 
 ## Licence
 

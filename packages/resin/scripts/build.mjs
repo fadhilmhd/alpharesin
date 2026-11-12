@@ -82,11 +82,14 @@ function buildNpm() {
   const license = [join(root, "LICENSE"), join(root, "legal/APACHE-2.0.txt")].find(existsSync);
   if (!license) throw new Error("No licence text found (LICENSE or legal/APACHE-2.0.txt)");
   cpSync(license, join(out, "LICENSE"));
-  // In the public repository (root package "alpharesin") its front page and NOTICE sit at the root, with
-  // links written for there, as npm reads them. Anywhere else only the package's own files are used:
-  // another repository's README never goes into the package.
+  // In the public repository (root package "alpharesin") its front page, NOTICE, changelog and the two documents
+  // the front page links to beside it (SECURITY.md, CLEAN-ROOM.md) sit at the root, with links written for there,
+  // as npm reads them; the README links to the repository's other files by their full URL. Anywhere else only the
+  // package's own files are used: another repository's README never goes into the package.
   const publicRepo = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).name === "alpharesin";
-  for (const f of ["README.md", "NOTICE"]) cpSync(publicRepo ? join(root, f) : join(pkg, f), join(out, f));
+  for (const f of ["README.md", "NOTICE", "CHANGELOG.md", "SECURITY.md", "CLEAN-ROOM.md"]) cpSync(publicRepo ? join(root, f) : join(pkg, f), join(out, f));
+  // The examples the README's commands use, so an installed package carries them too.
+  cpSync(publicRepo ? join(root, "examples") : join(pkg, "examples"), join(out, "examples"), { recursive: true });
 
   writeFileSync(
     join(out, "package.json"),
@@ -106,7 +109,7 @@ function buildNpm() {
         types: "./types/resin/npm/index.d.ts",
         exports: { ".": { types: "./types/resin/npm/index.d.ts", default: "./index.js" }, "./package.json": "./package.json" },
         bin: { alpharesin: "cli.js" },
-        files: ["index.js", "cli.js", "types", "README.md", "LICENSE", "NOTICE"],
+        files: ["index.js", "cli.js", "types", "examples", "README.md", "CHANGELOG.md", "SECURITY.md", "CLEAN-ROOM.md", "LICENSE", "NOTICE"],
         engines: { node: ">=18" },
         sideEffects: false,
       },

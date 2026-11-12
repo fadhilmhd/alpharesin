@@ -8,22 +8,34 @@ AlphaResin ships two ways:
 ## Every release
 
 1. Set the new `version` in `packages/resin/package.json` (semantic versioning:
-   a fix is a patch, a new built-in or target a minor version).
-2. Check that everything passes:
+   a fix is a patch, a new built-in or target a minor version), and the same
+   version in the README's status line.
+2. Add the version's section to `CHANGELOG.md`: what changed, for someone who
+   uses the package. On the day it is published, put the date in its heading
+   (`## 0.2.0 (2026-01-31)`), as every earlier entry has.
+3. Check that everything passes, from a clean install:
 
    ```sh
+   npm ci
    npm run typecheck && npm test && npm run build && npm run check:playground
+   npm pack ./packages/resin/dist/npm --dry-run
    ```
 
-3. Merge to `main`, then tag that commit with the version and push the tag:
+4. Merge to `main`, then tag that commit with the version and push the tag:
 
    ```sh
    git tag v0.2.0 && git push origin v0.2.0
    ```
 
+5. On GitHub, make a Release from the tag, with the version's CHANGELOG
+   section, word for word, as its notes.
+
 The Release workflow checks that the tag matches the package version, then
 publishes `packages/resin/dist/npm` to npm with provenance. No token is
 stored in the repository: npm trusts this repository's workflow (below).
+
+`package-lock.json` pins the development tools. When they change, refresh it
+with `npm install --package-lock-only` and commit it with the change.
 
 ## The first release, once
 

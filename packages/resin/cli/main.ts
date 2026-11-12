@@ -125,10 +125,21 @@ export function parseArgs(argv: readonly string[]): Args {
 
 const line = (i: Issue) => `  line ${i.line}: ${i.message}`;
 
-function describe(c: Converted): string {
-  const kind = c.library ? `library ${c.libraryName ?? ""}`.trim() : c.code.includes("P.strategy") ? "strategy" : "indicator";
-  return `${c.name ?? "script"} (${kind}${c.overlay ? ", on the price chart" : ""})`;
+/** The script's declaration, read from its source: for a script that doesn't parse, where `convert` has no name. */
+const declared = (source: string) => /^[ \t]*(indicator|strategy|library)[ \t]*\([ \t]*(?:title[ \t]*=[ \t]*)?(["'])((?:(?!\2).)*)\2/m.exec(source);
+
+function describe(c: Converted, source = ""): string {
+  const d = c.code ? null : declared(source);
+  const kind = c.library ? `library ${c.libraryName ?? ""}`.trim() : d ? d[1]! : c.code.includes("P.strategy") ? "strategy" : "indicator";
+  const name = c.name || d?.[3] || "script";
+  return `${name} (${kind}${c.overlay ? ", on the price chart" : ""})`;
 }
+
+/** A bar as the text output names it: its number, counting from 1, and its time (the JSON output's indexes count from 0). */
+const barAt = (bars: readonly { time: number }[], index: number) => {
+  const t = bars[index]?.time;
+  return `bar ${index + 1}${t === undefined || !Number.isFinite(t) ? "" : ` (${new Date(t).toISOString().slice(0, 16).replace("T", " ")} UTC)`}`;
+};
 
 /** Notes for the screen: what stopped it, and what was left out. */
 function report(c: Converted): string {
@@ -186,7 +197,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
       }
       const notes = report(c);
       if (a.command === "check") {
-        io.out(`${c.ok ? "Converts" : "Doesn't convert yet"}: ${describe(c)}\n${notes ? `\n${notes}\n` : ""}`);
+        io.out(`${c.ok ? "Converts" : "Doesn't convert yet"}: ${describe(c, source)}\n${notes ? `\n${notes}\n` : ""}`);
         return c.ok ? 0 : 1;
       }
       if (!c.ok) {
@@ -195,7 +206,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
       }
       emit(c.code);
       if (notes) io.err(`${notes}\n`);
-      if (a.out) io.err(`Wrote ${a.out}: ${describe(c)}\n`);
+      if (a.out) io.err(`Wrote ${a.out}: ${describe(c, source)}\n`);
       return 0;
     }
 
@@ -211,6 +222,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
       const r = runScript(mod, file.bars, { inputs, periodMs: file.periodMs, mintick: a.mintick ?? file.tick, ...(a.symbol ? { symbol: a.symbol } : {}) });
       if (a.json) emit(JSON.stringify({ name: mod.default.name, inputs, columns: r.columns, strategy: r.strategy }, null, 2) + "\n");
       else emit(columnsCsv(file.bars, r.columns));
+      if (a.out) io.err(`Wrote ${a.out}: ${file.bars.length} bars, ${r.columns.length} plotted ${r.columns.length === 1 ? "column" : "columns"}\n`);
       if (!a.json && r.strategy) {
         const s = r.strategy;
         io.err(`${mod.default.name}: ${s.trades} closed trades, net ${s.netProfit.toFixed(2)} (${s.netProfitPct.toFixed(2)}%), profit factor ${s.profitFactor === null ? "-" : s.profitFactor.toFixed(2)}\n`);
@@ -230,17 +242,20 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
           col.status === "match"
             ? "every bar"
             : col.status === "warmup"
-              ? `from bar ${col.from! + 1} of ${col.compared}`
+              ? `from ${barAt(tv.bars, col.from!)} of ${col.compared}`
               : col.status === "converging"
-                ? `still settling, ${(col.lastDiff * 100).toPrecision(2)}% apart at the end`
+                ? col.lastDiff === 0 && col.from !== null
+                  ? `still settling, equal from ${barAt(tv.bars, col.from)}`
+                  : `still settling, ${(col.lastDiff * 100).toPrecision(2)}% apart (relative) on the last bar`
                 : col.status === "missing"
                   ? "not in the export"
-                  : `${col.equal} of ${col.compared} bars agree${col.example ? `; bar ${col.example.index + 1}: TradingView ${col.example.tv}, AlphaResin ${col.example.ours}` : ""}`;
+                  : `${col.equal} of ${col.compared} bars agree${col.example ? `; first differs on ${barAt(tv.bars, col.example.index)}: export ${col.example.tv}, AlphaResin ${col.example.ours}` : ""}`;
         return `  ${col.status.padEnd(10)} ${col.title}: ${detail}`;
       });
       const ignored = p.ignored.length ? `\nIn the export but not plotted by this script: ${p.ignored.join(", ")}` : "";
-      emit(`${p.verdict === "match" ? "Matches" : p.verdict === "partial" ? "Partly matches" : "Differs from"} TradingView on ${p.bars} bars\n${rows.join("\n")}${ignored}\n`);
+      emit(`${p.verdict === "match" ? "Matches" : p.verdict === "partial" ? "Partly matches" : "Differs from"} the chart export on ${p.bars} bars\n${rows.join("\n")}${ignored}\n`);
     }
+    if (a.out) io.err(`Wrote ${a.out}: ${p.verdict === "match" ? "matches" : p.verdict === "partial" ? "partly matches" : "differs from"} the chart export on ${p.bars} bars\n`);
     return p.verdict === "match" ? 0 : 1;
   } catch (e) {
     if (e instanceof RunError || e instanceof ParityError || e instanceof UsageError) {

@@ -103,8 +103,10 @@ export function parseTvCsv(text: string): TvExport {
 
 /**
  * match: every bar agrees. warmup: agrees from `from` to the end.
- * converging: still off at the end, but by little and less and less: the
- * script's averages haven't settled on the export's history yet.
+ * converging: off on nearly every bar of the second half, by little and less
+ * and less toward the end: the script's averages haven't settled on the
+ * export's history yet. A few bars that differ among exact ones aren't
+ * converging, even when the last bars are exact.
  * differs: disagrees. missing: the export has no such column.
  */
 export type ColumnStatus = "match" | "warmup" | "converging" | "differs" | "missing";
@@ -117,11 +119,14 @@ export interface ColumnReport {
   equal: number;
   /** Index of the first bar from which every bar agrees (null: never). */
   from: number | null;
-  /** Largest relative difference seen from `from` on (0 when exact). */
+  /**
+   * Largest relative difference where both have a value (0 when exact): from `from` on
+   * for a column that matches to the end (match, warmup), over every compared bar otherwise.
+   */
   maxDiff: number;
   /** Relative difference on the last bar where both have a value (0 when equal). */
   lastDiff: number;
-  /** The first disagreement after `from`, or the last one before it. */
+  /** The first bar where the two disagree (null: none). */
   example: { index: number; tv: number | null; ours: number | null } | null;
 }
 
@@ -164,16 +169,10 @@ export function compareParity(tv: Column[], ours: Column[], tol = TOLERANCE): Pa
       if (!same(col.values[i]!, mine.values[i] ?? null, tol)) break;
       from = i;
     }
-    let lastBad: number | null = null;
+    let firstBad: number | null = null;
     for (let i = 0; i < n; i++) {
       if (same(col.values[i]!, mine.values[i] ?? null, tol)) equal++;
-      else lastBad = i;
-    }
-    let maxDiff = 0;
-    for (let i = from ?? n; i < n; i++) {
-      const a = col.values[i]!;
-      const b = mine.values[i] ?? null;
-      if (a !== null && b !== null) maxDiff = Math.max(maxDiff, Math.abs(a - b) / Math.max(1, Math.abs(a), Math.abs(b)));
+      else firstBad ??= i;
     }
     const rel = (i: number) => {
       const a = col.values[i]!;
@@ -182,21 +181,47 @@ export function compareParity(tv: Column[], ours: Column[], tol = TOLERANCE): Pa
     };
     const diffs = Array.from({ length: n }, (_, i) => rel(i));
     const lastDiff = [...diffs].reverse().find((d) => d !== null) ?? 0;
-    // Converging: small at the end, and at most half of what it was three quarters of the way in.
-    const before = diffs.slice(Math.floor(n * 0.5), Math.floor(n * 0.75)).filter((d): d is number => d !== null);
-    const earlier = before.length ? Math.max(...before) : null;
-    // Gaps agree over the second half (the first may still be warming up).
     const half = Math.floor(n / 2);
+    const q3 = Math.floor(n * 0.75);
+    const maxOf = (lo: number, hi: number) => {
+      const ds = diffs.slice(lo, hi).filter((d): d is number => d !== null);
+      return ds.length ? Math.max(...ds) : null;
+    };
+    // Converging: the gap shrinks toward the end. Over the last quarter it stays small, and at most half the
+    // largest gap between halfway and three quarters of the way in.
+    const earlier = maxOf(half, q3);
+    const tail = maxOf(q3, n) ?? 0;
+    const shrinking = earlier !== null && earlier > 0 && tail < 1e-3 && tail <= earlier / 2;
+    // And it is a gap that persists, as an average's does while it settles: in the second half, nearly every bar
+    // where both have a value differs, up to the last one that does. Isolated bars that differ, with exact bars
+    // between them, are a difference, not a settling average, even when the last bars happen to be exact.
+    let lastBad = -1;
+    for (let i = n - 1; i >= half; i--)
+      if (!same(col.values[i]!, mine.values[i] ?? null, tol)) {
+        lastBad = i;
+        break;
+      }
+    let valued = 0;
+    let off = 0;
+    for (let i = half; i <= lastBad; i++) {
+      if (diffs[i] === null) continue;
+      valued++;
+      if (!same(col.values[i]!, mine.values[i] ?? null, tol)) off++;
+    }
+    const persistent = lastBad >= 0 && off >= valued * 0.9;
+    // Gaps agree over the second half (the first may still be warming up).
     const nullsAgree = Array.from({ length: n - half }, (_, k) => (col.values[half + k] === null) === ((mine.values[half + k] ?? null) === null)).filter(Boolean).length >= (n - half) * 0.98;
     // Sparse columns (a label now and then): every disagreement a hair's breadth, where both have a value.
     const tinyOnly = Array.from({ length: n - half }, (_, k) => half + k).every((i) => {
       const d = rel(i);
       return same(col.values[i]!, mine.values[i] ?? null, tol) || (d !== null && d < 1e-4);
     });
-    const converging = nullsAgree && ((lastDiff < 1e-3 && earlier !== null && earlier > 0 && lastDiff <= earlier / 2) || (tinyOnly && equal >= n * 0.9));
+    const converging = nullsAgree && ((shrinking && persistent) || (tinyOnly && equal >= n * 0.9));
     const status: ColumnStatus =
       from === 0 ? "match" : from !== null && n - from >= Math.min(MIN_RUN, n) && from <= n * 0.8 ? "warmup" : converging ? "converging" : "differs";
-    const ex = lastBad === null ? null : { index: lastBad, tv: col.values[lastBad] ?? null, ours: mine.values[lastBad] ?? null };
+    let maxDiff = 0;
+    for (let i = status === "match" || status === "warmup" ? from! : 0; i < n; i++) maxDiff = Math.max(maxDiff, diffs[i] ?? 0);
+    const ex = firstBad === null ? null : { index: firstBad, tv: col.values[firstBad] ?? null, ours: mine.values[firstBad] ?? null };
     columns.push({ title: col.title, status, compared: n, equal, from, maxDiff, lastDiff, example: ex });
   }
   for (const c of ours) if (!used.has(c.title)) columns.push({ title: c.title, status: "missing", compared: 0, equal: 0, from: null, maxDiff: 0, lastDiff: 0, example: null });

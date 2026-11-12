@@ -1,5 +1,5 @@
 import { Broker, type StrategyReport } from "./broker";
-import { clamp } from "./math";
+import { clamp, directionalMove, emaStep, rmaStep } from "./math";
 import * as vec from "./ta";
 
 /**
@@ -879,7 +879,7 @@ export class Pine {
     const n = Math.max(1, Math.round(len));
     return b.length < n ? null : b.slice(-n);
   }
-  private smoothStep(st: St, x: number, len: number, alpha: number): number {
+  private smoothStep(st: St, x: number, len: number, kind: "ema" | "rma"): number {
     // Pine's seeding, as ta.ts `smoothed`: the SMA of the first `len` values, then exponential; na restarts the seed.
     if (isNa(x)) {
       st.prev = NaN;
@@ -896,7 +896,7 @@ export class Pine {
       }
       return NaN;
     }
-    st.prev = alpha * x + (1 - alpha) * (st.prev as number);
+    st.prev = (kind === "ema" ? emaStep : rmaStep)(st.prev as number, x, len);
     return st.prev as number;
   }
   private sub(st: St, key: string): St {
@@ -957,8 +957,8 @@ export class Pine {
       percentile_nearest_rank: (st: St, x: number, len: number, p: number) => win(st, x, len, (w, n) => vec.percentileNearestRank(w, n, p)),
       sum: (st: St, x: number, len: number) => win(st, x, len, (w, n) => vec.sum(w, n)),
       cum: (st: St, x: number) => (st.total = ((st.total as number) ?? 0) + (nz(x) as number)) as number,
-      ema: (st: St, x: number, len: number) => self.smoothStep(st, x, len, 2 / (len + 1)),
-      rma: (st: St, x: number, len: number) => self.smoothStep(st, x, len, 1 / len),
+      ema: (st: St, x: number, len: number) => self.smoothStep(st, x, len, "ema"),
+      rma: (st: St, x: number, len: number) => self.smoothStep(st, x, len, "rma"),
       change: (st: St, x: number, len = 1) => {
         const b = self.push(st, x);
         return x - (b[b.length - 1 - len] ?? NaN);
@@ -973,16 +973,16 @@ export class Pine {
         const prev = (st.px as number | undefined) ?? NaN;
         st.px = x;
         const ch = x - prev;
-        const u = self.smoothStep(self.sub(st, "u"), isNa(ch) ? NaN : Math.max(ch, 0), len, 1 / len);
-        const d = self.smoothStep(self.sub(st, "d"), isNa(ch) ? NaN : Math.max(-ch, 0), len, 1 / len);
+        const u = self.smoothStep(self.sub(st, "u"), isNa(ch) ? NaN : Math.max(ch, 0), len, "rma");
+        const d = self.smoothStep(self.sub(st, "d"), isNa(ch) ? NaN : Math.max(-ch, 0), len, "rma");
         if (isNa(u) || isNa(d)) return NaN;
         return d === 0 ? 100 : u === 0 ? 0 : 100 - 100 / (1 + u / d);
       },
       macd: (st: St, x: number, fast: number, slow: number, signal: number) => {
-        const f = self.smoothStep(self.sub(st, "f"), x, fast, 2 / (fast + 1));
-        const s = self.smoothStep(self.sub(st, "s"), x, slow, 2 / (slow + 1));
+        const f = self.smoothStep(self.sub(st, "f"), x, fast, "ema");
+        const s = self.smoothStep(self.sub(st, "s"), x, slow, "ema");
         const line = f - s;
-        const sig = self.smoothStep(self.sub(st, "g"), line, signal, 2 / (signal + 1));
+        const sig = self.smoothStep(self.sub(st, "g"), line, signal, "ema");
         return [line, sig, line - sig];
       },
       bb: (st: St, x: number, len: number, mult: number) => {
@@ -1014,7 +1014,7 @@ export class Pine {
         const b = win(self.sub(st, "v"), vol, len, (w, n) => vec.sma(w, n));
         return a / b;
       },
-      atr: (st: St, len: number) => self.smoothStep(st, self.trNow(true), len, 1 / len),
+      atr: (st: St, len: number) => self.smoothStep(st, self.trNow(true), len, "rma"),
       correlation: (st: St, a: number, b: number, len: number) => {
         const wa = self.window(self.sub(st, "a"), a, len);
         const wb = self.window(self.sub(st, "b"), b, len);
@@ -1187,7 +1187,7 @@ export class Pine {
       },
       supertrend: (st: St, factor: number, atrLen: number) => {
         const b = self.b()!;
-        const atr = self.smoothStep(self.sub(st, "a"), self.trNow(true), atrLen, 1 / atrLen);
+        const atr = self.smoothStep(self.sub(st, "a"), self.trNow(true), atrLen, "rma");
         const src = (b.high + b.low) / 2;
         let upper = src + factor * atr;
         let lower = src - factor * atr;
@@ -1259,15 +1259,15 @@ export class Pine {
         const p = self.b(1);
         const up = b && p ? b.high - p.high : NaN;
         const down = b && p ? p.low - b.low : NaN;
-        const plusDM = isNa(up) ? NaN : up > down && up > 0 ? up : 0;
-        const minusDM = isNa(down) ? NaN : down > up && down > 0 ? down : 0;
-        const trur = self.smoothStep(self.sub(st, "t"), self.trNow(false), diLen, 1 / diLen);
-        const plusRaw = (100 * self.smoothStep(self.sub(st, "p"), plusDM, diLen, 1 / diLen)) / trur;
-        const minusRaw = (100 * self.smoothStep(self.sub(st, "m"), minusDM, diLen, 1 / diLen)) / trur;
+        // Equal up- and down-moves (to rounding) count neither, as on TradingView (math.ts floatEq).
+        const [plusDM, minusDM] = directionalMove(up, down);
+        const trur = self.smoothStep(self.sub(st, "t"), self.trNow(false), diLen, "rma");
+        const plusRaw = (100 * self.smoothStep(self.sub(st, "p"), plusDM, diLen, "rma")) / trur;
+        const minusRaw = (100 * self.smoothStep(self.sub(st, "m"), minusDM, diLen, "rma")) / trur;
         const plus = self.fixnan(self.sub(st, "fp"), plusRaw);
         const minus = self.fixnan(self.sub(st, "fm"), minusRaw);
         const sum = plus + minus;
-        const adx = 100 * self.smoothStep(self.sub(st, "a"), Math.abs(plus - minus) / (sum === 0 ? 1 : sum), adxLen, 1 / adxLen);
+        const adx = 100 * self.smoothStep(self.sub(st, "a"), Math.abs(plus - minus) / (sum === 0 ? 1 : sum), adxLen, "rma");
         return [plus, minus, adx];
       },
     };

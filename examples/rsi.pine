@@ -1,0 +1,14 @@
+//@version=6
+// Wilder's relative strength index with two levels. A public, textbook formula.
+indicator("RSI with levels")
+
+length = input.int(14, "Length", minval = 1)
+upper = input.float(70, "Upper level")
+lower = input.float(30, "Lower level")
+
+value = ta.rsi(close, length)
+
+plot(value, "RSI", color = color.purple)
+hline(upper, "Upper", color = color.gray)
+hline(lower, "Lower", color = color.gray)
+bgcolor(value > upper ? color.new(color.red, 85) : value < lower ? color.new(color.green, 85) : na)

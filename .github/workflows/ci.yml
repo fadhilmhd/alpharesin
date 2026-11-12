@@ -1,5 +1,6 @@
 # Every push and pull request: types, tests, the package and the playground build,
-# and the playground checked in a browser.
+# and the playground checked in a browser. Then the package on the oldest Node it
+# supports (18): built on 22, its command and library run on 18.
 name: CI
 on:
   push:
@@ -15,9 +16,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run check:playground
+  node18:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build -- npm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: node --version
+      - run: node packages/resin/dist/npm/cli.js check examples/sma-cross.pine
+      - run: node packages/resin/dist/npm/cli.js run examples/rsi.pine --bars examples/bars.csv -o rsi.csv
+      - run: node --input-type=module -e "const m = await import('./packages/resin/dist/npm/index.js'); if (!m.convert(await (await import('node:fs/promises')).readFile('examples/rsi.pine', 'utf8')).ok) process.exit(1)"

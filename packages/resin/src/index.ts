@@ -1,7 +1,7 @@
 /**
- * AlphaResin: a parser and converter for Pine-compatible indicator scripts
- * (versions 5 and 6). Not affiliated with TradingView; "Pine Script" is
- * TradingView's trademark.
+ * AlphaResin: a parser and converter for Pine-compatible scripts (versions 5
+ * and 6): indicators, strategies and libraries. Not affiliated with
+ * TradingView; Pine Script® is TradingView's trademark.
  */
 export type * from "./ast";
 export { lex, KEYWORDS, ResinSyntaxError, type Annotation, type Lexed, type Pos, type Token, type TokenKind } from "./lexer";

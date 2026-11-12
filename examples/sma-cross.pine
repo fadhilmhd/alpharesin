@@ -1,0 +1,18 @@
+//@version=6
+// Two simple moving averages and where they cross. A public, textbook formula.
+indicator("SMA cross", overlay = true)
+
+fastLength = input.int(9, "Fast length", minval = 1)
+slowLength = input.int(21, "Slow length", minval = 1)
+
+fast = ta.sma(close, fastLength)
+slow = ta.sma(close, slowLength)
+crossUp = ta.crossover(fast, slow)
+crossDown = ta.crossunder(fast, slow)
+
+plot(fast, "Fast", color = color.teal)
+plot(slow, "Slow", color = color.orange)
+plotshape(crossUp, "Cross up", shape.triangleup, location.belowbar, color.teal)
+plotshape(crossDown, "Cross down", shape.triangledown, location.abovebar, color.orange)
+alertcondition(crossUp, "Fast above slow", "The fast average crossed above the slow one")
+alertcondition(crossDown, "Fast below slow", "The fast average crossed below the slow one")

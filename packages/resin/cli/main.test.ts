@@ -111,6 +111,10 @@ describe("alpharesin command line", () => {
     const broken = setup({ "c.pine": BROKEN });
     expect(await main(["check", "c.pine"], broken.io)).toBe(1);
     expect(broken.out()).toMatch(/Doesn't convert yet[\s\S]*line 3:/);
+    // A script that doesn't parse is still named, from its declaration.
+    const unparsed = setup({ "d.pine": `//@version=6\nstrategy("Half done", overlay = true)\nx = (close +\n` });
+    expect(await main(["check", "d.pine"], unparsed.io)).toBe(1);
+    expect(unparsed.out()).toMatch(/^Doesn't convert yet: Half done \(strategy\)\n/);
   });
 
   it("converts to a module, on screen or into a file", async () => {
@@ -143,6 +147,10 @@ describe("alpharesin command line", () => {
     const unknown = setup({ "a.pine": EMA, "b.csv": barsCsv() });
     expect(await main(["run", "a.pine", "--bars", "b.csv", "-i", "nope=1"], unknown.io)).toBe(1);
     expect(unknown.err()).toContain('"nope" isn\'t one of this script\'s inputs');
+    const file = setup({ "a.pine": EMA, "b.csv": barsCsv() });
+    expect(await main(["run", "a.pine", "--bars", "b.csv", "-o", "ema.csv"], file.io)).toBe(0);
+    expect(file.written["ema.csv"]!.split("\n")[0]).toBe("time,open,high,low,close,volume,Fast,Slow");
+    expect(file.err()).toBe("Wrote ema.csv: 300 bars, 2 plotted columns\n");
   });
 
   it("takes a timeframe input as Pine writes it, and refuses one that isn't", async () => {
@@ -181,11 +189,28 @@ describe("alpharesin command line", () => {
     const csv = run.out().replace(/^time,open,high,low,close,volume/, "time,open,high,low,close,Volume").replace(/^(\d{4}-[^,]+)/gm, (iso) => String(Date.parse(iso) / 1000));
     const t = setup({ "a.pine": EMA, "tv.csv": csv });
     expect(await main(["parity", "a.pine", "--tv", "tv.csv"], t.io)).toBe(0);
-    expect(t.out()).toMatch(/^Matches TradingView on 300 bars\n {2}match {6}Fast: every bar\n {2}match {6}Slow: every bar/);
+    expect(t.out()).toMatch(/^Matches the chart export on 300 bars\n {2}match {6}Fast: every bar\n {2}match {6}Slow: every bar/);
     const bars = parseBars(barsCsv());
     const edited = columnsCsv(bars.bars, [{ title: "Fast", values: bars.bars.map(() => 1) }, { title: "Slow", values: bars.bars.map(() => 2) }]).replace("volume", "Volume");
     const d = setup({ "a.pine": EMA, "tv.csv": edited });
     expect(await main(["parity", "a.pine", "--tv", "tv.csv"], d.io)).toBe(1);
-    expect(d.out()).toMatch(/Differs from TradingView[\s\S]*differs {4}Fast: 0 of 300 bars agree/);
+    // Bars count from 1 in the text, with their time; the JSON's indexes count from 0.
+    expect(d.out()).toMatch(/Differs from the chart export[\s\S]*differs {4}Fast: 0 of 300 bars agree; first differs on bar 1 \(2026-01-01 00:00 UTC\): export 1, AlphaResin /);
+  });
+
+  it("says a column differs when a few bars do, even if the last bars are exact", async () => {
+    const run = setup({ "a.pine": EMA, "b.csv": barsCsv() });
+    await main(["run", "a.pine", "--bars", "b.csv", "--json"], run.io);
+    const own = (JSON.parse(run.out()) as { columns: { title: string; values: (number | null)[] }[] }).columns;
+    const bars = parseBars(barsCsv());
+    for (const at of [[113, 188, 263], [150, 225, 292]]) {
+      const cols = own.map((c) => ({ title: c.title, values: c.values.map((v, i) => (c.title === "Fast" && v !== null && at.includes(i) ? v + 10 : v)) }));
+      const t = setup({ "a.pine": EMA, "tv.csv": columnsCsv(bars.bars, cols).replace("volume", "Volume") });
+      expect(await main(["parity", "a.pine", "--tv", "tv.csv"], t.io), `bars ${at.join(", ")}`).toBe(1);
+      expect(t.out()).toMatch(new RegExp(`^Partly matches the chart export on 300 bars[\\s\\S]*differs {4}Fast: 297 of 300 bars agree; first differs on bar ${at[0]! + 1} `));
+      const j = setup({ "a.pine": EMA, "tv.csv": columnsCsv(bars.bars, cols).replace("volume", "Volume") });
+      expect(await main(["parity", "a.pine", "--tv", "tv.csv", "--json"], j.io)).toBe(1);
+      expect(JSON.parse(j.out()).columns[0]).toMatchObject({ title: "Fast", status: "differs", example: { index: at[0] } });
+    }
   });
 });

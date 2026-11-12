@@ -1,5 +1,30 @@
 # Conformance results
 
+## 10 October 2026: the runtime changes in 0.1.7
+
+Several studies built on the runtime were run on daily and hourly chart
+exports of one market (about 11,500 daily and 20,700 hourly bars) and
+compared with them bar by bar. The market, its prices and the bars' dates
+aren't given here, and the exports aren't redistributed.
+
+What they showed, now in the runtime:
+- **`ta.ema` and `ta.rma` step order.**
+  - `prev + α·(x − prev)` matched an EMA-based study bit for bit on all of
+    about 32,100 bars (daily and hourly), against fewer than half for
+    `α·x + (1 − α)·prev`.
+  - `(prev·(L − 1) + x) / L` matched an ATR (`ta.rma`) bit for bit on all of
+    about 20,600 hourly bars, against about one in sixteen for the other order.
+- **Float comparisons.** Values 1.03e-11 apart compared as equal and values
+  1.13e-6 apart didn't, so the tolerance lies between the two; whether it is
+  absolute or relative isn't known. The runtime uses 1e-10. In `ta.dmi`, an
+  up-move and a down-move about 1e-17 apart were a tie. `ta.pivothigh` and
+  `ta.pivotlow` compared exactly.
+- **Pivots beside `na`.** A pivot whose neighbour is `na` still counted, so an
+  oscillator's first value could be one.
+
+These exports checked the built-ins above as those studies use them. They
+don't extend the 5 October results below to other built-ins.
+
 ## 5 October 2026
 
 The three conformance scripts were run on TradingView and exported:

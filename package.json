@@ -16,8 +16,8 @@
     "check:playground": "node packages/resin/scripts/check-playground.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "@types/node": "^22.20.4",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^22.20.5",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"

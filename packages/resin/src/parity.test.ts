@@ -67,6 +67,46 @@ describe("comparing a script with the export", () => {
     expect(report.verdict).toBe("match");
   });
 
+  it("reports the first bar that differs, and the real largest difference", () => {
+    const tv = Array.from({ length: n }, (_, i) => 100 + i);
+    // Off on bars 10 (by 1%), 20 (by 5%) and 97; agrees on the last two bars only: too short to count as a warm-up.
+    const ours = tv.map((x, i) => (i === 10 ? x * 1.01 : i === 20 ? x * 1.05 : i === 97 ? x * 1.02 : x));
+    const [col] = compareParity([{ title: "X", values: tv }], [{ title: "X", values: ours }]).columns;
+    expect(col).toMatchObject({ status: "differs", from: 98, equal: n - 3, example: { index: 10, tv: 110, ours: 110 * 1.01 } });
+    expect(col!.maxDiff).toBeCloseTo(0.05 / 1.05, 12);
+  });
+
+  it("measures a warm-up's largest difference from where it agrees, and still names its first differing bar", () => {
+    const ours = exact.map((x, i) => (i < 30 ? x + 5 : x + 1e-9));
+    const [col] = compareParity([{ title: "Late", values: exact }], [{ title: "Late", values: ours }]).columns;
+    expect(col).toMatchObject({ status: "warmup", from: 30, example: { index: 0, tv: 0, ours: 5 } });
+    expect(col!.maxDiff).toBeLessThan(1e-9);
+    expect(col!.maxDiff).toBeGreaterThan(0);
+  });
+
+  it("calls a few bars that differ among exact ones a difference, not a settling average, even when the last bars are exact", () => {
+    // An oscillator's 80 bars (the length of examples/bars.csv), and the same with 10 points added on a few bars.
+    const osc = Array.from({ length: 80 }, (_, i) => (i < 14 ? null : 50 + 20 * Math.sin(i / 5)));
+    const shifted = (bars: number[], by: number) => osc.map((x, i) => (x !== null && bars.includes(i) ? x + by : x));
+    for (const bars of [[30, 50, 70], [40, 60, 78], [45, 55, 62], [60]]) {
+      const report = compareParity([{ title: "RSI", values: shifted(bars, 10) }], [{ title: "RSI", values: osc }]);
+      expect(report.columns[0], `bars ${bars.join(", ")}`).toMatchObject({ status: "differs", example: { index: bars[0] } });
+      expect(report.verdict).toBe("differs");
+    }
+    // The same on a shorter series, where the exact tail is too short to be a warm-up: still a difference.
+    const short = osc.slice(0, 40);
+    const report = compareParity([{ title: "RSI", values: short.map((x, i) => (x !== null && (i === 20 || i === 25) ? x + 10 : x)) }], [{ title: "RSI", values: short }]);
+    expect(report.columns[0]!.status).toBe("differs");
+  });
+
+  it("still calls an average that settles toward the end, exact on its last bars, converging", () => {
+    const tv = Array.from({ length: 80 }, (_, i) => 100 + i);
+    // Off on every bar by a shrinking amount, then exact on the last 10 bars: too few to be a warm-up.
+    const ours = tv.map((x, i) => (i < 70 ? x * (1 + 0.05 * 0.9 ** i) : x));
+    const [col] = compareParity([{ title: "Slow", values: tv }], [{ title: "Slow", values: ours }]).columns;
+    expect(col).toMatchObject({ status: "converging", from: 70, lastDiff: 0 });
+  });
+
   it("counts a gap on one side as a difference", () => {
     const report = compareParity([{ title: "X", values: [1, 2, 3] }], [{ title: "X", values: [1, null, 3] }]);
     expect(report.columns[0]).toMatchObject({ status: "differs", equal: 2, example: { index: 1, tv: 2, ours: null } });

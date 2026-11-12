@@ -7,6 +7,7 @@
  * of `na` or of the first bars matters for parity, the comment says what Pine
  * does and the code copies it.
  */
+import { directionalMove, emaStep, rmaStep } from "./math";
 
 export type Series = number[];
 
@@ -95,10 +96,10 @@ export function wma(src: Series, length: number): Series {
 
 /**
  * Exponentially weighted average with Pine's seeding: the first value is the
- * SMA of the first `length` non-NaN inputs, then `alpha·x + (1 − alpha)·prev`.
+ * SMA of the first `length` non-NaN inputs, then `step` (math.ts emaStep or rmaStep, the order that matched chart exports).
  * A NaN input yields NaN and restarts the seed, as `na(sum[1])` does in Pine.
  */
-function smoothed(src: Series, length: number, alpha: number): Series {
+function smoothed(src: Series, length: number, step: (prev: number, x: number, length: number) => number): Series {
   const out: Series = new Array(src.length).fill(NaN);
   let prev = NaN;
   let seedSum = 0;
@@ -120,19 +121,19 @@ function smoothed(src: Series, length: number, alpha: number): Series {
       }
       continue;
     }
-    prev = alpha * x + (1 - alpha) * prev;
+    prev = step(prev, x, length);
     out[i] = prev;
   }
   return out;
 }
 
 export function ema(src: Series, length: number): Series {
-  return smoothed(src, length, 2 / (length + 1));
+  return smoothed(src, length, emaStep);
 }
 
 /** Wilder's moving average (RMA), as used by RSI and ATR. */
 export function rma(src: Series, length: number): Series {
-  return smoothed(src, length, 1 / length);
+  return smoothed(src, length, rmaStep);
 }
 
 /**
@@ -184,12 +185,41 @@ export function lowest(src: Series, length: number): Series {
   return extreme(src, length, Math.min);
 }
 
+/**
+ * Median of the last `length` values; na until `length` bars exist and while
+ * the window holds an na. The window is kept sorted as it slides (one insert,
+ * one removal per bar) rather than re-sorted on every bar, as in
+ * `percentileNearestRank`: same values, a fraction of the CPU (re-sorting 120
+ * values on every bar was most of a 5,000-bar indicator run).
+ */
 export function median(src: Series, length: number): Series {
-  return windowed(src, length, (v) => {
-    const s = [...v].sort((a, b) => a - b);
-    const mid = s.length >> 1;
-    return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
-  });
+  const out: Series = new Array(src.length).fill(NaN);
+  const window: number[] = [];
+  let missing = 0;
+  const lowerBound = (x: number) => {
+    let lo = 0;
+    let hi = window.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (window[mid]! < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const mid = length >> 1;
+  for (let i = 0; i < src.length; i++) {
+    const x = src[i]!;
+    if (isNa(x)) missing++;
+    else window.splice(lowerBound(x), 0, x);
+    if (i >= length) {
+      const gone = src[i - length]!;
+      if (isNa(gone)) missing--;
+      else window.splice(lowerBound(gone), 1);
+    }
+    if (i < length - 1 || missing > 0) continue;
+    out[i] = length % 2 ? window[mid]! : (window[mid - 1]! + window[mid]!) / 2;
+  }
+  return out;
 }
 
 /** Pearson correlation of two series over `length` bars; NaN if either window holds a NaN. */
@@ -321,10 +351,16 @@ export function valuewhen(cond: boolean[], src: Series, occurrence: number): Ser
  *
  * Ties, as TradingView resolves them: an equal value on the left does not
  * stop a pivot, an equal value on the right does, so of two equal highs the
- * later one is the pivot. Measured on a TradingView chart export (BTC 4H,
- * about 21,000 bars): 3/3, 5/5 and 25/25 pivots with an equal bar only on the
- * left count (46 cases), those with an equal bar on the right do not (40
- * cases); rejecting both ties, as this function did before, missed some.
+ * later one is the pivot. Measured against reference values from an external
+ * chart export (about 21,000 bars): 3/3, 5/5 and 25/25 pivots with an equal bar
+ * only on the left count (46 cases), those with an equal bar on the right do
+ * not (40 cases); rejecting both ties, as this function did before, missed some.
+ *
+ * An `na` neighbour never stops a pivot (it beats nothing): an oscillator's
+ * first value is a pivot when the bars after it confirm it, though the bars
+ * before it are na. Measured against reference values from external chart
+ * exports: an oscillator's 5/5 pivot low (daily) and pivot high (hourly) sit on
+ * its first bar; rejecting na neighbours, as this function did, missed them.
  */
 export function pivothigh(src: Series, left: number, right: number): Series {
   return pivot(src, left, right, (candidate, other) => other > candidate);
@@ -345,7 +381,8 @@ function pivot(src: Series, left: number, right: number, beaten: (candidate: num
     for (let k = p - left; k <= p + right; k++) {
       if (k === p) continue;
       const other = src[k]!;
-      if (isNa(other) || beaten(candidate, other) || (k > p && other === candidate)) return NaN;
+      if (isNa(other)) continue;
+      if (beaten(candidate, other) || (k > p && other === candidate)) return NaN;
     }
     return candidate;
   });
@@ -375,8 +412,10 @@ export function fixnan(src: Series): Series {
 export function dmi(high: Series, low: Series, close: Series, diLength: number, adxSmoothing: number): [Series, Series, Series] {
   const up = change(high);
   const down = change(low).map((x) => -x);
-  const plusDM = up.map((u, i) => (isNa(u) ? NaN : u > down[i]! && u > 0 ? u : 0));
-  const minusDM = down.map((d, i) => (isNa(d) ? NaN : d > up[i]! && d > 0 ? d : 0));
+  // Equal up- and down-moves (to rounding) count neither, as on TradingView: see math.ts floatEq.
+  const moves = up.map((u, i) => directionalMove(u, down[i]!));
+  const plusDM = moves.map((m) => m[0]);
+  const minusDM = moves.map((m) => m[1]);
   const trur = rma(tr(high, low, close, false), diLength);
   const plus = fixnan(rma(plusDM, diLength).map((x, i) => (100 * x) / trur[i]!));
   const minus = fixnan(rma(minusDM, diLength).map((x, i) => (100 * x) / trur[i]!));

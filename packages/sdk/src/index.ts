@@ -96,7 +96,7 @@ export interface SdkOutput {
   tables?: { rows: { text: string; tone?: Tone; span?: number }[][] }[];
   /** The pane's background behind each bar. */
   backgrounds?: (Tone | null)[];
-  /** A tint per candle, −1 (bearish) … +1 (bullish); null leaves it as drawn. */
+  /** A tint per candle, −1 (down) … +1 (up); null leaves it as drawn. */
   candleTint?: (number | null)[];
   /** One short status for the indicator's header. */
   headline?: { text: string; tone?: Tone };

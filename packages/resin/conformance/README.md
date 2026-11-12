@@ -25,4 +25,4 @@ The exports are TradingView's data: keep them to yourself, never commit them to 
 npx vitest run packages/resin/src/conformance.compare.test.ts --silent=false
 ```
 
-Each column reads `match`, `warmup` (agrees once the script has enough history), `converging` (still settling at the end), `differs` (with the first bar that differs) or `missing`.
+Each column reads `match`, `warmup` (agrees once the script has enough history), `converging` (off on nearly every bar, by less and less toward the end: still settling), `differs` (with the first bar that differs) or `missing`.
